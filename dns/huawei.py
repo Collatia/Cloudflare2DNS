@@ -49,41 +49,43 @@ class HuaWeiApi():
         result['data'] = {'records': records_temp}
         return result
 
-    def create_record(self, domain, sub_domain, value, record_type, line, ttl):
-        request = CreateRecordSetWithLineRequest()
-        request.zone_id = self.zone_id[domain + '.']
-        if sub_domain == '@':
-            name = domain + "."
-        else:
-            name = sub_domain + '.' + domain + "."
-        request.body = CreateRecordSetWithLineReq(
-            type = record_type,
-            name = name,
-            ttl = ttl,
-            weight = 1,
-            records = [value],
-            line = self.line_format(line)
-        )
-        response = self.client.create_record_set_with_line(request)
-        result = json.loads(str(response))
+    def create_record(self, domain, sub_domain, value, record_type, line, ttl):  
+        request = CreateRecordSetWithLineRequest()  
+        request.zone_id = self.zone_id[domain + '.']  
+        if sub_domain == '@':  
+            name = domain + "."  
+        else:  
+            name = sub_domain + '.' + domain + "."  
+        records = [value] if isinstance(value, str) else value  
+        request.body = CreateRecordSetWithLineReq(  
+            type = record_type,  
+            name = name,  
+            ttl = ttl,  
+            weight = 1,  
+            records = records,  
+            line = self.line_format(line)  
+        )  
+        response = self.client.create_record_set_with_line(request)  
+        result = json.loads(str(response))  
         return result
         
-    def change_record(self, domain, record_id, sub_domain, value, record_type, line, ttl):
-        request = UpdateRecordSetRequest()
-        request.zone_id = self.zone_id[domain + '.']
-        request.recordset_id = record_id
-        if sub_domain == '@':
-            name = domain + "."
-        else:
-            name = sub_domain + '.' + domain + "."
-        request.body = UpdateRecordSetReq(
-            name = name,
-            type = record_type,
-            ttl = ttl,
-            records=[value]
-        )
-        response = self.client.update_record_set(request)
-        result = json.loads(str(response))
+    def change_record(self, domain, record_id, sub_domain, value, record_type, line, ttl):  
+        request = UpdateRecordSetRequest()  
+        request.zone_id = self.zone_id[domain + '.']  
+        request.recordset_id = record_id  
+        if sub_domain == '@':  
+            name = domain + "."  
+        else:  
+            name = sub_domain + '.' + domain + "."  
+        records = [value] if isinstance(value, str) else value  
+        request.body = UpdateRecordSetReq(  
+            name = name,  
+            type = record_type,  
+            ttl = ttl,  
+            records = records  
+        )  
+        response = self.client.update_record_set(request)  
+        result = json.loads(str(response))  
         return result
 
     def get_zones(self):

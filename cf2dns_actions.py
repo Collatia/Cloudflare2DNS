@@ -14,7 +14,7 @@ from dns.qCloud import QcloudApiv3 # QcloudApiv3 DNSPod 的 API 更新了 By git
 from dns.aliyun import AliApi
 from dns.huawei import HuaWeiApi
 
-config =  json.loads(os.environ["CONFIG"])
+config = json.loads(os.environ["CONFIG"])
 #CM:移动 CU:联通 CT:电信  AB:境外 DEF:默认
 #修改需要更改的dnspod域名和子域名
 DOMAINS = json.loads(os.environ["DOMAINS"])
@@ -36,56 +36,100 @@ def get_optimization_ip():
         print("CHANGE OPTIMIZATION IP ERROR: " + str(e))
         return None
 
-def changeDNS(line, s_info, c_info, domain, sub_domain, cloud):
-    global config
-    if iptype == 'v6':
-        recordType = "AAAA"
-    else:
-        recordType = "A"
-
-    lines = {"CM": "移动", "CU": "联通", "CT": "电信", "AB": "境外", "DEF": "默认"}
-    line = lines[line]
-
-    try:
-        create_num = config["affect_num"] - len(s_info)
-        if create_num == 0:
-            for info in s_info:
-                if len(c_info) == 0:
-                    break
-                cf_ip = c_info.pop(random.randint(0,len(c_info)-1))["ip"]
-                if cf_ip in str(s_info):
-                    continue
-                ret = cloud.change_record(domain, info["recordId"], sub_domain, cf_ip, recordType, line, config["ttl"])
-                if(config["dns_server"] != 1 or ret["code"] == 0):
-                    print("CHANGE DNS SUCCESS: ----Time: " + str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())) + "----DOMAIN: " + domain + "----SUBDOMAIN: " + sub_domain + "----RECORDLINE: "+line+"----RECORDID: " + str(info["recordId"]) + "----VALUE: " + cf_ip )
-                else:
-                    print("CHANGE DNS ERROR: ----Time: " + str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())) + "----DOMAIN: " + domain + "----SUBDOMAIN: " + sub_domain + "----RECORDLINE: "+line+"----RECORDID: " + str(info["recordId"]) + "----VALUE: " + cf_ip + "----MESSAGE: " + ret["message"] )
-        elif create_num > 0:
-            for i in range(create_num):
-                if len(c_info) == 0:
-                    break
-                cf_ip = c_info.pop(random.randint(0,len(c_info)-1))["ip"]
-                if cf_ip in str(s_info):
-                    continue
-                ret = cloud.create_record(domain, sub_domain, cf_ip, recordType, line, config["ttl"])
-                if(config["dns_server"] != 1 or ret["code"] == 0):
-                    print("CREATE DNS SUCCESS: ----Time: " + str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())) + "----DOMAIN: " + domain + "----SUBDOMAIN: " + sub_domain + "----RECORDLINE: "+line+"----VALUE: " + cf_ip )
-                else:
-                    print("CREATE DNS ERROR: ----Time: " + str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())) + "----DOMAIN: " + domain + "----SUBDOMAIN: " + sub_domain + "----RECORDLINE: "+line+"----RECORDID: " + str(info["recordId"]) + "----VALUE: " + cf_ip + "----MESSAGE: " + ret["message"] )
+def changeDNS(line, s_info, c_info, domain, sub_domain, cloud):  
+    global config  
+    if iptype == 'v6':  
+        recordType = "AAAA"  
+    else:  
+        recordType = "A"  
+  
+    lines = {"CM": "移动", "CU": "联通", "CT": "电信", "AB": "境外", "DEF": "默认"}  
+    line = lines[line]  
+  
+    try:  
+        # 如果是华为云DNS，使用记录集方式处理  
+        if config["dns_server"] == 3:  # 华为云DNS  
+            # 收集所有优化IP  
+            all_ips = []  
+            ip_count = min(len(c_info), config["affect_num"])  
+              
+            # 从优化IP池中随机选择IP  
+            for i in range(ip_count):  
+                if len(c_info) == 0:  
+                    break  
+                cf_ip = c_info.pop(random.randint(0, len(c_info)-1))["ip"]  
+                all_ips.append(cf_ip)  
+              
+            # 如果有现有记录，更新第一条记录，删除其余记录  
+            if len(s_info) > 0:  
+                # 更新第一条记录，使用所有收集的IP  
+                ret = cloud.change_record(domain, s_info[0]["recordId"], sub_domain, all_ips, recordType, line, config["ttl"])  
+                if ret["code"] == 0:  
+                    print("CHANGE DNS SUCCESS: ----Time: " + str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())) +   
+                          "----DOMAIN: " + domain + "----SUBDOMAIN: " + sub_domain +   
+                          "----RECORDLINE: "+line+"----RECORDID: " + str(s_info[0]["recordId"]) +   
+                          "----VALUES: " + str(all_ips))  
+                else:  
+                    print("CHANGE DNS ERROR: ----Time: " + str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())) +   
+                          "----DOMAIN: " + domain + "----SUBDOMAIN: " + sub_domain +   
+                          "----RECORDLINE: "+line+"----RECORDID: " + str(s_info[0]["recordId"]) +   
+                          "----VALUES: " + str(all_ips) + "----MESSAGE: " + ret["message"])  
+                  
+                # 删除多余的记录  
+                for i in range(1, len(s_info)):  
+                    cloud.del_record(domain, s_info[i]["recordId"])  
+            else:  
+                # 没有现有记录，创建新记录集  
+                ret = cloud.create_record(domain, sub_domain, all_ips, recordType, line, config["ttl"])  
+                if ret["code"] == 0:  
+                    print("CREATE DNS SUCCESS: ----Time: " + str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())) +   
+                          "----DOMAIN: " + domain + "----SUBDOMAIN: " + sub_domain +   
+                          "----RECORDLINE: "+line+"----VALUES: " + str(all_ips))  
+                else:  
+                    print("CREATE DNS ERROR: ----Time: " + str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())) +   
+                          "----DOMAIN: " + domain + "----SUBDOMAIN: " + sub_domain +   
+                          "----RECORDLINE: "+line+"----VALUES: " + str(all_ips) +   
+                          "----MESSAGE: " + ret["message"])  
         else:
-            for info in s_info:
-                if create_num == 0 or len(c_info) == 0:
-                    break
-                cf_ip = c_info.pop(random.randint(0,len(c_info)-1))["ip"]
-                if cf_ip in str(s_info):
+            create_num = config["affect_num"] - len(s_info)
+            if create_num == 0:
+                for info in s_info:
+                    if len(c_info) == 0:
+                        break
+                    cf_ip = c_info.pop(random.randint(0,len(c_info)-1))["ip"]
+                    if cf_ip in str(s_info):
+                        continue
+                    ret = cloud.change_record(domain, info["recordId"], sub_domain, cf_ip, recordType, line, config["ttl"])
+                    if(config["dns_server"] != 1 or ret["code"] == 0):
+                        print("CHANGE DNS SUCCESS: ----Time: " + str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())) + "----DOMAIN: " + domain + "----SUBDOMAIN: " + sub_domain + "----RECORDLINE: "+line+"----RECORDID: " + str(info["recordId"]) + "----VALUE: " + cf_ip )
+                    else:
+                        print("CHANGE DNS ERROR: ----Time: " + str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())) + "----DOMAIN: " + domain + "----SUBDOMAIN: " + sub_domain + "----RECORDLINE: "+line+"----RECORDID: " + str(info["recordId"]) + "----VALUE: " + cf_ip + "----MESSAGE: " + ret["message"] )
+            elif create_num > 0:
+                for i in range(create_num):
+                    if len(c_info) == 0:
+                        break
+                    cf_ip = c_info.pop(random.randint(0,len(c_info)-1))["ip"]
+                    if cf_ip in str(s_info):
+                        continue
+                    ret = cloud.create_record(domain, sub_domain, cf_ip, recordType, line, config["ttl"])
+                    if(config["dns_server"] != 1 or ret["code"] == 0):
+                        print("CREATE DNS SUCCESS: ----Time: " + str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())) + "----DOMAIN: " + domain + "----SUBDOMAIN: " + sub_domain + "----RECORDLINE: "+line+"----VALUE: " + cf_ip )
+                    else:
+                        print("CREATE DNS ERROR: ----Time: " + str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())) + "----DOMAIN: " + domain + "----SUBDOMAIN: " + sub_domain + "----RECORDLINE: "+line+"----RECORDID: " + str(info["recordId"]) + "----VALUE: " + cf_ip + "----MESSAGE: " + ret["message"] )
+            else:
+                for info in s_info:
+                    if create_num == 0 or len(c_info) == 0:
+                        break
+                    cf_ip = c_info.pop(random.randint(0,len(c_info)-1))["ip"]
+                    if cf_ip in str(s_info):
+                        create_num += 1
+                        continue
+                    ret = cloud.change_record(domain, info["recordId"], sub_domain, cf_ip, recordType, line, config["ttl"])
+                    if(config["dns_server"] != 1 or ret["code"] == 0):
+                        print("CHANGE DNS SUCCESS: ----Time: " + str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())) + "----DOMAIN: " + domain + "----SUBDOMAIN: " + sub_domain + "----RECORDLINE: "+line+"----RECORDID: " + str(info["recordId"]) + "----VALUE: " + cf_ip )
+                    else:
+                        print("CHANGE DNS ERROR: ----Time: " + str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())) + "----DOMAIN: " + domain + "----SUBDOMAIN: " + sub_domain + "----RECORDLINE: "+line+"----RECORDID: " + str(info["recordId"]) + "----VALUE: " + cf_ip + "----MESSAGE: " + ret["message"] )
                     create_num += 1
-                    continue
-                ret = cloud.change_record(domain, info["recordId"], sub_domain, cf_ip, recordType, line, config["ttl"])
-                if(config["dns_server"] != 1 or ret["code"] == 0):
-                    print("CHANGE DNS SUCCESS: ----Time: " + str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())) + "----DOMAIN: " + domain + "----SUBDOMAIN: " + sub_domain + "----RECORDLINE: "+line+"----RECORDID: " + str(info["recordId"]) + "----VALUE: " + cf_ip )
-                else:
-                    print("CHANGE DNS ERROR: ----Time: " + str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())) + "----DOMAIN: " + domain + "----SUBDOMAIN: " + sub_domain + "----RECORDLINE: "+line+"----RECORDID: " + str(info["recordId"]) + "----VALUE: " + cf_ip + "----MESSAGE: " + ret["message"] )
-                create_num += 1
     except Exception as e:
             print("CHANGE DNS ERROR: ----Time: " + str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())) + "----MESSAGE: " + str(traceback.print_exc()))
 
