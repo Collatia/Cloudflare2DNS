@@ -1,4 +1,4 @@
-name: 'Cloudflare2DNS'
+name: 'EdgeOne2DNS'
 
 on:
   workflow_dispatch:
@@ -20,7 +20,7 @@ jobs:
         run: if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       - name: 'run cf2dns'
         env:
-          CONFIG: ${{ secrets.CONFIG }}
-          DOMAINS: ${{ secrets.DOMAINS }}
+          CONFIG: ${{ secrets.EO_CONFIG }}
+          DOMAINS: ${{ secrets.EO_DOMAINS }}
           PROVIDER: ${{ secrets.PROVIDER }}
         run: python cf2dns_actions.py
